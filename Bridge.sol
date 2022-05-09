@@ -29,11 +29,11 @@ contract Bridge is IBridge {
     // nonce
     uint256 public override threshold = 1;
     uint256 public override nonce = 0;
-    uint256 public override bridgeState = 1; 
+    bool public bridgeState = true;
 
     // For the initial token
     address[] public tokens = [0x9dAdc36cef5158e35c2cc2b5403e82AEa1E3BdA6, 0x2c2Eb66e59301Ae563b1bFC708303E8a54716E7a];
-    uint256[] public init_min_amount = [10**15, 10**15];
+    uint256[] public init_min_amount = [10**3, 10**15];
     mapping (address => uint256) public tokenWhitelist;
 
     constructor(
@@ -43,6 +43,7 @@ contract Bridge is IBridge {
     ) public {
         threshold = _threshold;
         nonce = _nonce;
+        bridgeState = true;
         for (uint256 i = 0; i < _signers.length; i++) {
             signers[_signers[i]] = true;
         }
@@ -57,6 +58,7 @@ contract Bridge is IBridge {
     event AddToken(address token, uint256 min_amount, uint count);
     event RemoveToken(address token, uint count);
     event CollectOwerShip(address token, address to);
+    event ChangeBridgeState(bool newState);
 
     // modifier
     modifier withNonce {
@@ -77,6 +79,11 @@ contract Bridge is IBridge {
             bytesArray[i] = _address[i];
         }
         require(keccak256(bytesArray) == keccak256(bytes("terra")));
+        _;
+    }
+
+    modifier isBridgeStateLive() {
+        require(bridgeState, "Can't bridge while it's down!");
         _;
     }
 
@@ -103,6 +110,23 @@ contract Bridge is IBridge {
         threshold = _newThreshold;
         emit ChangeThreshold(
             _newThreshold
+        );
+    }
+
+    function changeBridgeState(bool newState, bytes[] memory _signatures)
+        public withNonce
+    {
+        uint256 newStateToInt = newState ? 1 : 0;
+        require(
+            verify(
+                keccak256(abi.encodePacked(nonce, newStateToInt)),
+                _signatures
+            ),
+            "Minter: invalid signature"
+        );
+        bridgeState = newState;
+        emit ChangeBridgeState(
+            newState
         );
     }
 
@@ -201,6 +225,7 @@ contract Bridge is IBridge {
     public
     tokenWhitelisted(_tokenAddress)
     isTerraAddress(_recipient)
+    isBridgeStateLive
     {
         ERC20 token = ERC20(_tokenAddress);
 
@@ -240,26 +265,6 @@ contract Bridge is IBridge {
     function tokenAllownce(address owner, address spender, address _tokenAddress) public view returns (uint256){
         ERC20 token = ERC20(_tokenAddress);
         return token.allowance(owner,  spender);
-    }
-
-    function abiEeccak256EncodePacked(uint256 non, address _token, address _to, uint256 _amount, bytes32 _txHash) public pure returns (bytes32) {
-        return keccak256(
-            abi.encodePacked(non, _token, _to, _amount, _txHash)
-        );
-    }
-
-    function abiEncodePacked(uint256 non, address _token, address _to, uint256 _amount, bytes32 _txHash) public pure returns (bytes memory) {
-        return abi.encodePacked(non, _token, _to, _amount, _txHash);
-    }
-
-    function ECDSAtoEthSignedMessageHash(bytes32 _hash) public pure returns (bytes32) {
-        bytes32 h = ECDSA.toEthSignedMessageHash(_hash);
-        return h;
-    }
-
-    function ECDSArecover(bytes32 hash, bytes memory signature) public pure returns (address) {
-        address currentSigner = ECDSA.recover(hash, signature);
-        return currentSigner;
     }
 
     // view
